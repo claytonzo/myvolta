@@ -198,10 +198,10 @@ def run(args):
                 log.info("Published: SOC=%s%% V=%.3f A=%+.3f",
                          snap["soc"], snap["volt_V"] or 0, snap["curr_A"] or 0)
             except BleakError as e:
-                log.warning("BLE error: %s — retrying in 30s", e)
+                log.warning("BLE error (%s): %s — retrying in 30s", type(e).__name__, e)
                 await asyncio.sleep(30)
             except Exception as e:
-                log.error("Unexpected error: %s — retrying in 60s", e)
+                log.error("Unexpected error (%s): %s — retrying in 60s", type(e).__name__, e, exc_info=True)
                 await asyncio.sleep(60)
 
     try:
