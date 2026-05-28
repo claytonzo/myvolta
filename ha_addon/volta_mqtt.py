@@ -13,7 +13,7 @@ import struct
 import datetime
 
 import paho.mqtt.client as mqtt
-from bleak import BleakClient, BleakError
+from bleak import BleakClient, BleakError, BleakScanner
 
 logging.basicConfig(
     level=logging.INFO,
@@ -153,8 +153,12 @@ def publish_discovery(client, base_topic):
 
 async def collect_one_cycle(device_addr, interval, state):
     """Connect, collect data for `interval` seconds, disconnect."""
-    log.info("Connecting to %s ...", device_addr)
-    async with BleakClient(device_addr, timeout=20.0) as client:
+    log.info("Scanning for %s ...", device_addr)
+    device = await BleakScanner.find_device_by_address(device_addr, timeout=30.0)
+    if device is None:
+        raise BleakError(f"Device {device_addr} not found in scan")
+    log.info("Found — connecting ...")
+    async with BleakClient(device, timeout=20.0) as client:
         log.info("Connected.")
 
         def handler(_, raw):
