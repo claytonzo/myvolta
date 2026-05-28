@@ -18,6 +18,7 @@ Python 3.9 (macOS system Python via Xcode). **Do not use `X | Y` union type synt
 
 - **Hardware**: Embedded One CAN BLE Gateway, model VPS-1A50, hw 4.1, fw 1.33BEC
 - **BLE address (macOS UUID)**: `B532E5DA-6704-3640-9142-415175D91C45`
+- **BLE address (Linux MAC)**: `E8:EB:1B:F9:1A:50`
 - **Notify+write characteristic**: `00035b03-58e6-07dd-021a-08123a000301`
 - **Write-only ctrl characteristic**: `00035b03-58e6-07dd-021a-08123a0003ff`
 - **Do not write to the ctrl characteristic** — sending probe commands causes an `Err\r\n` gateway error and disrupts the stream.

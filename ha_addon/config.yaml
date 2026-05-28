@@ -10,7 +10,7 @@ boot: auto
 host_network: true
 host_dbus: true
 options:
-  device_addr: "B532E5DA-6704-3640-9142-415175D91C45"
+  device_addr: "E8:EB:1B:F9:1A:50"
   mqtt_host: "localhost"
   mqtt_port: 1883
   mqtt_user: ""

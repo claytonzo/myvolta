@@ -214,7 +214,7 @@ def run(args):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--device",        default="B532E5DA-6704-3640-9142-415175D91C45")
+    p.add_argument("--device",        default="E8:EB:1B:F9:1A:50")
     p.add_argument("--mqtt-host",     default="localhost")
     p.add_argument("--mqtt-port",     type=int, default=1883)
     p.add_argument("--mqtt-user",     default="")
