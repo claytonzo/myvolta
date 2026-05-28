@@ -168,19 +168,19 @@ async def collect_one_cycle(device_addr, interval, state):
 
 
 def run(args):
-    mqttc = mqtt.Client(client_id="volta_monitor", clean_session=True)
+    mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="volta_monitor", clean_session=True)
     if args.mqtt_user:
         mqttc.username_pw_set(args.mqtt_user, args.mqtt_password)
 
     base = "volta/battery"
 
-    def on_connect(client, userdata, flags, rc):
-        if rc == 0:
+    def on_connect(client, userdata, flags, reason_code, properties):
+        if reason_code.is_failure:
+            log.error("MQTT connect failed: %s", reason_code)
+        else:
             log.info("MQTT connected to %s:%s", args.mqtt_host, args.mqtt_port)
             client.publish(f"{base}/availability", "online", retain=True)
             publish_discovery(client, base)
-        else:
-            log.error("MQTT connect failed rc=%d", rc)
 
     mqttc.on_connect = on_connect
     mqttc.will_set(f"{base}/availability", "offline", retain=True)
