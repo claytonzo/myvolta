@@ -55,6 +55,7 @@ def _soc_from_voltage(v_avg):
 
 class VoltaState:
     def __init__(self):
+        self.modules = None
         self.soh = None
         self.volt_V = None
         self.curr_A = None
@@ -63,9 +64,8 @@ class VoltaState:
         self.buf = bytearray()
 
     def parse_frame(self, msgid, data):
-        log.info("Frame msgid=0x%02X data=%s", msgid, data.hex())
-
         if msgid == 0x01:
+            self.modules = data[0]
             self.soh = data[3]
 
         elif msgid == 0x00:
@@ -115,7 +115,7 @@ class VoltaState:
             "cell_max_V":   round(max(cells), 3) if cells else None,
             "cell_delta_mV": round((max(cells) - min(cells)) * 1000, 1) if len(cells) > 1 else None,
             "temp_max_C":   round(max(temps), 1) if temps else None,
-            "modules":      len(self.cells) if self.cells else None,
+            "modules":      self.modules,
             "timestamp":    datetime.datetime.now().isoformat(),
         }
 
