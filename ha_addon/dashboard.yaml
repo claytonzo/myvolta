@@ -1,0 +1,57 @@
+title: Volta Battery
+views:
+  - title: Battery
+    icon: mdi:battery-high
+    cards:
+      - type: gauge
+        entity: sensor.volta_battery_soc
+        name: State of Charge
+        min: 0
+        max: 100
+        severity:
+          green: 50
+          yellow: 20
+          red: 10
+
+      - type: glance
+        title: Pack Overview
+        entities:
+          - entity: sensor.volta_pack_voltage
+            name: Voltage
+          - entity: sensor.volta_pack_current
+            name: Current
+          - entity: sensor.volta_battery_soh
+            name: Health
+          - entity: sensor.volta_battery_temp_max
+            name: Temp
+
+      - type: glance
+        title: Cell Voltages
+        entities:
+          - entity: sensor.volta_cell_voltage_min
+            name: Min Cell
+          - entity: sensor.volta_cell_voltage_max
+            name: Max Cell
+          - entity: sensor.volta_cell_delta
+            name: Delta
+
+      - type: history-graph
+        title: SOC History
+        hours_to_show: 24
+        entities:
+          - entity: sensor.volta_battery_soc
+            name: SOC
+
+      - type: history-graph
+        title: Voltage History
+        hours_to_show: 24
+        entities:
+          - entity: sensor.volta_pack_voltage
+            name: Pack Voltage
+
+      - type: history-graph
+        title: Current History
+        hours_to_show: 24
+        entities:
+          - entity: sensor.volta_pack_current
+            name: Pack Current
