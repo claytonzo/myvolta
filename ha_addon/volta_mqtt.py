@@ -25,6 +25,9 @@ log = logging.getLogger("volta")
 
 GW_DATA_CHAR = "00035b03-58e6-07dd-021a-08123a000301"
 
+BATTERY_CAPACITY_AH = 224.0   # 11,600 Wh NPE Pure3 / 51.8V nominal
+SOC_REST_THRESHOLD_A = 2.0    # recalibrate from OCV when |current| < this
+
 _SOC_TABLE = [
     (0,   2.80), (10,  3.40), (20,  3.55), (30,  3.62),
     (40,  3.65), (50,  3.675), (60,  3.70), (70,  3.76),
@@ -63,6 +66,8 @@ class VoltaState:
         self.cells = {}
         self.temps = {}
         self.buf = bytearray()
+        self._soc = None       # coulomb-counted SOC estimate
+        self._soc_ts = None    # timestamp of last SOC update
 
     def parse_frame(self, msgid, data):
         if msgid == 0x01:
@@ -104,11 +109,31 @@ class VoltaState:
 
     def snapshot(self):
         cells = [v for v in self.cells.values() if v and v > 0.5]
-        soc = _soc_from_voltage(sum(cells) / len(cells)) if cells else None
         temps = [t for t in self.temps.values() if t is not None]
+        now = datetime.datetime.now()
+
+        if cells:
+            soc_ocv = _soc_from_voltage(sum(cells) / len(cells))
+            at_rest = self.curr_A is None or abs(self.curr_A) < SOC_REST_THRESHOLD_A
+
+            if at_rest:
+                # OCV is reliable at rest — use it to recalibrate
+                self._soc = float(soc_ocv)
+                self._soc_ts = now
+            elif self._soc is not None and self._soc_ts is not None:
+                # Active current — integrate coulombs since last update
+                capacity_ah = BATTERY_CAPACITY_AH * (self.soh / 100.0) if self.soh else BATTERY_CAPACITY_AH
+                dt_h = (now - self._soc_ts).total_seconds() / 3600.0
+                delta_pct = self.curr_A * dt_h / capacity_ah * 100.0
+                self._soc = max(0.0, min(100.0, self._soc + delta_pct))
+                self._soc_ts = now
+            else:
+                # No prior estimate yet — seed from OCV even if not at rest
+                self._soc = float(soc_ocv)
+                self._soc_ts = now
 
         return {
-            "soc":          soc,
+            "soc":          round(self._soc) if self._soc is not None else None,
             "soh":          self.soh,
             "volt_V":       round(self.volt_V, 3) if self.volt_V is not None else None,
             "curr_A":       round(self.curr_A, 3) if self.curr_A is not None else None,
@@ -117,7 +142,7 @@ class VoltaState:
             "cell_delta_mV": round((max(cells) - min(cells)) * 1000, 1) if len(cells) > 1 else None,
             "temp_max_C":   round(max(temps), 1) if temps else None,
             "modules":      self.modules,
-            "timestamp":    datetime.datetime.now().isoformat(),
+            "timestamp":    now.isoformat(),
         }
 
 
