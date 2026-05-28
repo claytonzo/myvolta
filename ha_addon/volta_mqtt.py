@@ -68,7 +68,6 @@ class VoltaState:
         if msgid == 0x01:
             self.modules = data[0]
             self.soh = data[3]
-            log.info("BMS msg01 raw: %s  dec=%s", data.hex(), list(data))
 
         elif msgid == 0x00:
             self.volt_V = struct.unpack_from(">H", data, 1)[0] / 1000.0
