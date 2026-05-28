@@ -13,7 +13,7 @@ import struct
 import datetime
 
 import paho.mqtt.client as mqtt
-from bleak import BleakClient, BleakError, BleakScanner
+from bleak import BleakClient, BleakError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,14 +151,30 @@ def publish_discovery(client, base_topic):
         log.info("Published discovery: %s", config_topic)
 
 
+async def _bluetoothctl_scan(timeout=12):
+    """Run bluetoothctl scan to populate BlueZ device cache."""
+    log.info("Pre-scanning via bluetoothctl (%ds) ...", timeout)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bluetoothctl", "--timeout", str(timeout), "scan", "on",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=timeout + 5)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    except Exception as e:
+        log.warning("bluetoothctl scan error: %s", e)
+
+
 async def collect_one_cycle(device_addr, interval, state):
     """Connect, collect data for `interval` seconds, disconnect."""
-    log.info("Scanning for %s ...", device_addr)
-    device = await BleakScanner.find_device_by_address(device_addr, timeout=30.0)
-    if device is None:
-        raise BleakError(f"Device {device_addr} not found in scan")
-    log.info("Found — connecting ...")
-    async with BleakClient(device, timeout=20.0) as client:
+    await _bluetoothctl_scan(timeout=12)
+    log.info("Connecting to %s ...", device_addr)
+    async with BleakClient(device_addr, timeout=20.0) as client:
         log.info("Connected.")
 
         def handler(_, raw):
