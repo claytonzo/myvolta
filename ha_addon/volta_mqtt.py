@@ -63,6 +63,8 @@ class VoltaState:
         self.buf = bytearray()
 
     def parse_frame(self, msgid, data):
+        log.info("Frame msgid=0x%02X data=%s", msgid, data.hex())
+
         if msgid == 0x01:
             self.soh = data[3]
 
