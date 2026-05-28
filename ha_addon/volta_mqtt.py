@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
+import signal
 import struct
 import datetime
 
@@ -154,25 +155,38 @@ def publish_discovery(client, base_topic):
 
 async def monitor_forever(device_addr, publish_interval, state, publish_fn):
     """Maintain a persistent BLE connection and publish data every publish_interval seconds."""
-    while True:
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop_event.set)
+
+    while not stop_event.is_set():
         try:
             log.info("Connecting to %s ...", device_addr)
             async with BleakClient(device_addr, timeout=30.0) as client:
                 log.info("Connected.")
                 await client.start_notify(GW_DATA_CHAR, lambda _, raw: state.ingest(bytearray(raw)))
-                last_pub = asyncio.get_event_loop().time()
-                while True:
+                last_pub = loop.time()
+                while not stop_event.is_set():
                     await asyncio.sleep(5)
-                    now = asyncio.get_event_loop().time()
+                    now = loop.time()
                     if now - last_pub >= publish_interval:
                         publish_fn(state.snapshot())
                         last_pub = now
+                log.info("Disconnecting cleanly ...")
         except BleakError as e:
+            if stop_event.is_set():
+                break
             log.warning("BLE disconnected (%s): %s — reconnecting in 30s", type(e).__name__, e)
             await asyncio.sleep(30)
         except Exception as e:
+            if stop_event.is_set():
+                break
             log.error("Unexpected error (%s): %s — reconnecting in 60s", type(e).__name__, e, exc_info=True)
             await asyncio.sleep(60)
+
+    log.info("Shutdown complete.")
 
 
 def run(args):

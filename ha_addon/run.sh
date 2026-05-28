@@ -7,6 +7,11 @@ MQTT_USER=$(bashio::config 'mqtt_user')
 MQTT_PASSWORD=$(bashio::config 'mqtt_password')
 POLL_INTERVAL=$(bashio::config 'poll_interval')
 
+# Clean up any stale BLE connection left by a previous run
+bashio::log.info "Clearing stale connection for ${DEVICE_ADDR} ..."
+bluetoothctl disconnect "${DEVICE_ADDR}" 2>/dev/null || true
+sleep 3
+
 # Pre-scan and trust so BlueZ has a persistent entry for the device
 bashio::log.info "Pre-scanning for ${DEVICE_ADDR} (20s) ..."
 bluetoothctl --timeout 20 scan on 2>/dev/null || true
