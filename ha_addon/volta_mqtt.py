@@ -151,42 +151,27 @@ def publish_discovery(client, base_topic):
         log.info("Published discovery: %s", config_topic)
 
 
-async def _bluetoothctl_scan(timeout=12):
-    """Run bluetoothctl scan to populate BlueZ device cache."""
-    log.info("Pre-scanning via bluetoothctl (%ds) ...", timeout)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "bluetoothctl", "--timeout", str(timeout), "scan", "on",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await asyncio.wait_for(proc.wait(), timeout=timeout + 5)
-    except asyncio.TimeoutError:
+async def monitor_forever(device_addr, publish_interval, state, publish_fn):
+    """Maintain a persistent BLE connection and publish data every publish_interval seconds."""
+    while True:
         try:
-            proc.kill()
-        except Exception:
-            pass
-    except Exception as e:
-        log.warning("bluetoothctl scan error: %s", e)
-
-
-async def collect_one_cycle(device_addr, interval, state):
-    """Connect, collect data for `interval` seconds, disconnect."""
-    await _bluetoothctl_scan(timeout=12)
-    log.info("Connecting to %s ...", device_addr)
-    async with BleakClient(device_addr, timeout=20.0) as client:
-        log.info("Connected.")
-
-        def handler(_, raw):
-            state.ingest(bytearray(raw))
-
-        await client.start_notify(GW_DATA_CHAR, handler)
-        await asyncio.sleep(interval)
-        try:
-            await client.stop_notify(GW_DATA_CHAR)
-        except Exception:
-            pass
-    log.info("Disconnected.")
+            log.info("Connecting to %s ...", device_addr)
+            async with BleakClient(device_addr, timeout=30.0) as client:
+                log.info("Connected.")
+                await client.start_notify(GW_DATA_CHAR, lambda _, raw: state.ingest(bytearray(raw)))
+                last_pub = asyncio.get_event_loop().time()
+                while True:
+                    await asyncio.sleep(5)
+                    now = asyncio.get_event_loop().time()
+                    if now - last_pub >= publish_interval:
+                        publish_fn(state.snapshot())
+                        last_pub = now
+        except BleakError as e:
+            log.warning("BLE disconnected (%s): %s — reconnecting in 30s", type(e).__name__, e)
+            await asyncio.sleep(30)
+        except Exception as e:
+            log.error("Unexpected error (%s): %s — reconnecting in 60s", type(e).__name__, e, exc_info=True)
+            await asyncio.sleep(60)
 
 
 def run(args):
@@ -211,23 +196,13 @@ def run(args):
 
     state = VoltaState()
 
-    async def loop():
-        while True:
-            try:
-                await collect_one_cycle(args.device, args.interval, state)
-                snap = state.snapshot()
-                mqttc.publish(f"{base}/state", json.dumps(snap), retain=False)
-                log.info("Published: SOC=%s%% V=%.3f A=%+.3f",
-                         snap["soc"], snap["volt_V"] or 0, snap["curr_A"] or 0)
-            except BleakError as e:
-                log.warning("BLE error (%s): %s — retrying in 30s", type(e).__name__, e)
-                await asyncio.sleep(30)
-            except Exception as e:
-                log.error("Unexpected error (%s): %s — retrying in 60s", type(e).__name__, e, exc_info=True)
-                await asyncio.sleep(60)
+    def publish_fn(snap):
+        mqttc.publish(f"{base}/state", json.dumps(snap), retain=False)
+        log.info("Published: SOC=%s%% V=%.3f A=%+.3f",
+                 snap["soc"], snap["volt_V"] or 0, snap["curr_A"] or 0)
 
     try:
-        asyncio.run(loop())
+        asyncio.run(monitor_forever(args.device, args.interval, state, publish_fn))
     finally:
         mqttc.publish(f"{base}/availability", "offline", retain=True)
         mqttc.loop_stop()
