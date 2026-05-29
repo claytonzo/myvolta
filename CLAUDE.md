@@ -12,7 +12,7 @@ Reverse-engineering the BLE interface of a Volta Power Systems battery pack in a
 pip3 install bleak paho-mqtt
 ```
 
-Python 3.9 (macOS system Python via Xcode). **Do not use `X | Y` union type syntax** — it requires 3.10+. Use `Optional[X]` or skip annotations instead.
+Python 3.9 (macOS system Python via Xcode). **Do not use `X | Y` union type syntax** — it requires 3.10+. Use `Optional[X]` or skip annotations instead. The Pi runs Python 3.12 (Alpine).
 
 ## Device
 
@@ -67,7 +67,11 @@ Frame sync: `55 55` at bytes 0–1. End marker: `04 04` at bytes 18–19. Always
 
 ## SOC calculation
 
-**There is no explicit SOC byte in the stream.** SOC is derived from average cell voltage via a calibrated OCV curve. The curve was empirically matched to the physical display (3.6776V avg = 50% SOC):
+**There is no explicit SOC byte in the stream.** `volta_mqtt.py` uses a hybrid approach:
+
+- **At rest** (`|current| < 2A`): recalibrates from OCV (open-circuit voltage) via a lookup table matched to the physical display (3.6776V avg = 50% SOC).
+- **During charge/discharge** (`|current| ≥ 2A`): integrates coulombs (`current × Δt / capacity_Ah`) to track SOC smoothly without OCV distortion.
+- **Capacity**: 224 Ah (11,600 Wh NPE Pure3 system ÷ 51.8V nominal), adjusted by SoH (83%) for ~186 Ah effective.
 
 ```python
 _SOC_TABLE = [
@@ -81,16 +85,45 @@ byte[3] of msg `0x01` = 83 is **State of Health** (constant), not SOC. Do not us
 
 ## Home Assistant add-on (`ha_addon/`)
 
-Runs on the Raspberry Pi 4 permanently installed in the RV. The Pi's built-in Bluetooth connects directly to the VPS-1A50.
+Runs on a Raspberry Pi permanently installed in the RV. The Pi's built-in Bluetooth connects directly to the VPS-1A50.
 
-Architecture: BLE notifications → `VoltaState` parser → MQTT publish → HA auto-discovery sensors.
+Architecture: persistent BLE connection → BLE notifications → `VoltaState` parser → MQTT publish every `poll_interval` seconds → HA auto-discovery sensors.
 
 - `config.yaml` — HA add-on metadata; requires `host_dbus: true` and `host_network: true` for Bluetooth
 - `Dockerfile` — Alpine + Python3 + bleak + paho-mqtt
-- `run.sh` — reads add-on config via `bashio`, passes as CLI args to `volta_mqtt.py`
+- `run.sh` — clears stale BLE state, pre-scans 45s to populate BlueZ cache, then launches `volta_mqtt.py`
 - `volta_mqtt.py` — main bridge; publishes HA auto-discovery configs to `homeassistant/sensor/volta_*/config` and state JSON to `volta/battery/state`
 - `dashboard.yaml` — HA dashboard YAML (gauge, glance, history cards)
 
-The add-on reconnects on BLE errors with backoff. It collects data for `poll_interval` seconds per cycle (default 30s) then disconnects and republishes. The Pi's Bluetooth must not be claimed by HA's built-in Bluetooth integration simultaneously — disable that integration if installed.
+HA sensors published: SOC (%), SoH (%), pack voltage (V), pack current (A), cell min/max/delta (V/mV), max temp (°C), module count, power (W).
 
-MQTT host defaults to `core-mosquitto` (the Mosquitto broker HA add-on's internal hostname).
+The add-on maintains a **persistent BLE connection** and reconnects with backoff (30s on BLE error, 60s on unexpected error). The Pi's Bluetooth must not be claimed by HA's built-in Bluetooth integration simultaneously — disable that integration if installed.
+
+MQTT host defaults to `localhost` (requires `host_network: true`; `core-mosquitto` hostname does not resolve with host networking).
+
+## Deploying changes to the Pi
+
+The git repo lives at `/addons/myvolta/`; HA runs the add-on from `/addons/volta_battery_monitor/`. After pushing:
+
+```bash
+cd /addons/myvolta && git pull
+cp /addons/myvolta/ha_addon/volta_mqtt.py /addons/volta_battery_monitor/volta_mqtt.py
+cp /addons/myvolta/ha_addon/run.sh /addons/volta_battery_monitor/run.sh
+```
+
+Then restart the add-on in HA. A rebuild is only needed when `Dockerfile` or `config.yaml` changes.
+
+## BlueZ troubleshooting
+
+**Symptom**: `TimeoutError` on every connect attempt despite device being visible in scan.
+
+**Cause**: BlueZ holds a stale connection (`Connected: yes`) from a previous unclean disconnect, blocking new connections.
+
+**Fix** (from HA terminal):
+```bash
+bluetoothctl info E8:EB:1B:F9:1A:50   # confirm Connected: yes
+bluetoothctl disconnect E8:EB:1B:F9:1A:50
+# add-on will reconnect automatically on next retry
+```
+
+The `run.sh` startup disconnect should prevent this, but it can still occur after abnormal termination.
