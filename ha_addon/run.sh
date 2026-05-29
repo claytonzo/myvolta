@@ -13,8 +13,8 @@ bluetoothctl disconnect "${DEVICE_ADDR}" 2>/dev/null || true
 sleep 3
 
 # Pre-scan and trust so BlueZ has a persistent entry for the device
-bashio::log.info "Pre-scanning for ${DEVICE_ADDR} (20s) ..."
-bluetoothctl --timeout 20 scan on 2>/dev/null || true
+bashio::log.info "Pre-scanning for ${DEVICE_ADDR} (45s) ..."
+bluetoothctl --timeout 45 scan on 2>/dev/null || true
 bluetoothctl trust "${DEVICE_ADDR}" 2>/dev/null \
     && bashio::log.info "Device trusted." \
     || bashio::log.warning "Trust failed — device may not be visible yet"
