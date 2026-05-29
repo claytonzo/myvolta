@@ -45,6 +45,7 @@ HA_SENSORS = [
     ("cell_delta", "Cell Delta",         "mV",  None,          "measurement", "cell_delta_mV", "mdi:battery-alert"),
     ("temp_max",   "Battery Temp Max",   "°C",  "temperature", "measurement", "temp_max_C", None),
     ("modules",    "Battery Modules",    None,  None,          None,          "modules",    "mdi:battery-charging"),
+    ("power",      "Battery Power",      "W",   "power",       "measurement", "power_W",    None),
 ]
 
 
@@ -141,6 +142,7 @@ class VoltaState:
             "cell_max_V":   round(max(cells), 3) if cells else None,
             "cell_delta_mV": round((max(cells) - min(cells)) * 1000, 1) if len(cells) > 1 else None,
             "temp_max_C":   round(max(temps), 1) if temps else None,
+            "power_W":      round(self.volt_V * self.curr_A, 1) if self.volt_V is not None and self.curr_A is not None else None,
             "modules":      self.modules,
             "timestamp":    now.isoformat(),
         }
